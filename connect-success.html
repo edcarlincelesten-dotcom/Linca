@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuenta conectada — Linca</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:#f5f0ff; min-height:100vh; display:flex; align-items:center; justify-content:center; }
+        .card { background:white; border-radius:20px; padding:48px 40px; text-align:center; max-width:420px; width:90%; box-shadow:0 4px 24px rgba(124,58,237,0.1); }
+        .icon-circle { width:80px; height:80px; background:#d1fae5; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 24px; }
+        .icon-circle .material-icons { font-size:40px; color:#059669; }
+        h1 { font-size:24px; color:#1f2937; margin-bottom:8px; }
+        p { color:#6b7280; font-size:15px; line-height:1.6; margin-bottom:24px; }
+        .btn { display:inline-block; padding:14px 32px; background:#7c3aed; color:white; border-radius:10px; text-decoration:none; font-size:15px; font-weight:600; transition:background 0.2s; }
+        .btn:hover { background:#6d28d9; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon-circle">
+            <span class="material-icons">check_circle</span>
+        </div>
+        <h1>¡Cuenta conectada!</h1>
+        <p>Tu cuenta Stripe está lista. Ahora puedes publicar productos y recibir pagos automáticamente. 🎉</p>
+        <a href="index.html" class="btn" onclick="saveStripeAccount()">Ir a publicar mi producto</a>
+    </div>
+
+    <script>
+        // Guardar el stripeAccountId en el usuario actual
+        function saveStripeAccount() {
+            const params    = new URLSearchParams(window.location.search);
+            const accountId = params.get('accountId');
+            const userId    = params.get('userId');
+
+            if (accountId && userId) {
+                // Leer usuarios de localStorage
+                const users = JSON.parse(localStorage.getItem('linca_users') || '[]');
+                const idx   = users.findIndex(u => String(u.id) === String(userId));
+                if (idx !== -1) {
+                    users[idx].stripeAccountId = accountId;
+                    localStorage.setItem('linca_users', JSON.stringify(users));
+                }
+
+                // Actualizar currentUser también
+                const currentUser = JSON.parse(localStorage.getItem('linca_currentUser') || 'null');
+                if (currentUser && String(currentUser.id) === String(userId)) {
+                    currentUser.stripeAccountId = accountId;
+                    localStorage.setItem('linca_currentUser', JSON.stringify(currentUser));
+                }
+            }
+        }
+
+        // Ejecutar al cargar la página
+        const params    = new URLSearchParams(window.location.search);
+        const accountId = params.get('accountId');
+        const userId    = params.get('userId');
+        if (accountId && userId) saveStripeAccount();
+    </script>
+</body>
+</html>

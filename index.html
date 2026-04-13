@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Linca - Marketplace Social</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo" onclick="showSection('home')" style="cursor:pointer">
+            <span class="material-icons">storefront</span>
+            <h1>Linca</h1>
+        </div>
+        <div class="search-bar">
+            <span class="material-icons">search</span>
+            <input type="text" placeholder="Buscar en Linca..." id="search">
+        </div>
+        <div class="nav-actions" id="authButtons">
+            <button class="nav-btn" onclick="openLoginModal()">Iniciar sesión</button>
+            <button class="nav-btn primary" onclick="openLoginModal()">Registrarse</button>
+        </div>
+        <div class="user-info" id="userInfo" style="display:none">
+            <img id="userAvatar" class="user-avatar" src="">
+            <span id="userName"></span>
+            <button onclick="showSection('settings')" class="nav-btn" title="Configuración">
+                <span class="material-icons" style="font-size:18px;vertical-align:middle">settings</span>
+            </button>
+            <button onclick="logout()" class="nav-btn">Cerrar sesión</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <aside class="sidebar">
+            <div class="sidebar-menu">
+                <div class="menu-item" onclick="showSection('home')">
+                    <span class="material-icons">home</span><span>Inicio</span>
+                </div>
+                <div class="menu-item" onclick="showSection('favorites')">
+                    <span class="material-icons">favorite</span><span>Favoritos</span>
+                </div>
+                <div class="menu-item" onclick="showSection('purchases')">
+                    <span class="material-icons">shopping_bag</span><span>Mis compras</span>
+                </div>
+                <div class="menu-item" onclick="showSection('cart')">
+                    <span class="material-icons">shopping_cart</span>
+                    <span>Carrito <span id="cartCount" class="cart-badge">0</span></span>
+                </div>
+                <div class="menu-item" onclick="showSection('messages')">
+                    <span class="material-icons">chat</span>
+                    <span>Mensajes <span id="msgBadge" class="cart-badge" style="display:none">●</span></span>
+                </div>
+                <div class="menu-item" onclick="openPublishModal()">
+                    <span class="material-icons">sell</span><span>Vender en Linca</span>
+                </div>
+                <div class="menu-item" onclick="showSection('settings')">
+                    <span class="material-icons">settings</span><span>Configuración</span>
+                </div>
+            </div>
+            <hr>
+            <h3>Categorías</h3>
+            <ul id="categories">
+                <li data-cat="Electrónica">📱 Electrónica</li>
+                <li data-cat="Ropa">👕 Ropa</li>
+                <li data-cat="Hogar">🏠 Hogar</li>
+                <li data-cat="Autos">🚗 Autos</li>
+                <li data-cat="Deportes">⚽ Deportes</li>
+            </ul>
+        </aside>
+
+        <main>
+            <div id="homeSection">
+                <div class="products-grid" id="productsGrid"></div>
+            </div>
+
+            <div id="favoritesSection" style="display:none">
+                <h2>❤️ Mis Favoritos</h2>
+                <div id="favoritesContainer"></div>
+            </div>
+
+            <div id="purchasesSection" style="display:none">
+                <h2>📦 Mis Compras</h2>
+                <div id="purchasesContainer"></div>
+            </div>
+
+            <!-- ====== MENSAJES ESTILO FACEBOOK ====== -->
+            <div id="messagesSection" style="display:none">
+                <h2>💬 Mensajes</h2>
+                <div class="inbox-layout">
+                    <!-- Lista de conversaciones -->
+                    <div class="inbox-list" id="inboxList"></div>
+                    <!-- Panel del chat activo -->
+                    <div class="inbox-chat" id="inboxChat">
+                        <div class="inbox-empty">
+                            <span class="material-icons" style="font-size:48px;opacity:0.3">chat_bubble_outline</span>
+                            <p>Selecciona una conversación</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cartSection" style="display:none">
+                <h2>🛒 Mi Carrito</h2>
+                <div id="cartContainer"></div>
+            </div>
+
+            <!-- ====== CONFIGURACIÓN ====== -->
+            <div id="settingsSection" style="display:none">
+                <h2>⚙️ Configuración</h2>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="switchSettingsTab('profile')">👤 Perfil</button>
+                    <button class="settings-tab" onclick="switchSettingsTab('password')">🔒 Contraseña</button>
+                    <button class="settings-tab" onclick="switchSettingsTab('theme')">🎨 Apariencia</button>
+                    <button class="settings-tab" onclick="switchSettingsTab('myproducts')">📦 Mis productos</button>
+                </div>
+                <div id="settingsProfile" class="settings-panel">
+                    <h3>Editar perfil</h3>
+                    <div style="text-align:center;margin-bottom:16px;">
+                        <img id="settingsAvatarPreview" src="" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #7c3aed;">
+                    </div>
+                    <input type="text" id="settingsName" placeholder="Nombre completo" class="modal-input">
+                    <label class="modal-input file-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                        <span class="material-icons" style="font-size:18px">photo_camera</span>
+                        Cambiar foto de perfil
+                        <input type="file" id="settingsAvatar" accept="image/*" style="display:none" onchange="previewSettingsAvatar(this)">
+                    </label>
+                    <button onclick="saveProfile()" class="publish-btn">Guardar cambios</button>
+                </div>
+                <div id="settingsPassword" class="settings-panel" style="display:none">
+                    <h3>Cambiar contraseña</h3>
+                    <input type="password" id="currentPassword" placeholder="Contraseña actual" class="modal-input">
+                    <input type="password" id="newPassword" placeholder="Nueva contraseña" class="modal-input">
+                    <input type="password" id="confirmPassword" placeholder="Confirmar nueva contraseña" class="modal-input">
+                    <button onclick="changePassword()" class="publish-btn">Cambiar contraseña</button>
+                </div>
+                <div id="settingsTheme" class="settings-panel" style="display:none">
+                    <h3>Apariencia</h3>
+                    <p style="margin-bottom:20px;opacity:0.7;">Elige el tema de la interfaz</p>
+                    <div class="theme-options">
+                        <div class="theme-option" id="themeLight" onclick="setTheme('light')">
+                            <div class="theme-preview light-preview">
+                                <div class="tp-bar"></div>
+                                <div class="tp-cards"><div class="tp-card"></div><div class="tp-card"></div></div>
+                            </div>
+                            <span>☀️ Claro</span>
+                        </div>
+                        <div class="theme-option" id="themeDark" onclick="setTheme('dark')">
+                            <div class="theme-preview dark-preview">
+                                <div class="tp-bar"></div>
+                                <div class="tp-cards"><div class="tp-card"></div><div class="tp-card"></div></div>
+                            </div>
+                            <span>🌙 Oscuro</span>
+                        </div>
+                    </div>
+                </div>
+                <div id="settingsMyProducts" class="settings-panel" style="display:none">
+                    <h3>Mis productos publicados</h3>
+                    <div id="myProductsContainer"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ====== MODAL DETALLE PRODUCTO ====== -->
+    <div id="productDetailModal" class="modal" style="display:none">
+        <div class="modal-content product-detail-content">
+            <span class="close" onclick="closeProductDetail()">&times;</span>
+            <div id="productDetailBody"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Pago REDISEÑADO -->
+<div id="paymentModal" class="modal" style="display:none">
+    <div class="modal-content payment-modal-content">
+        <button class="payment-close-btn" onclick="closePaymentModal()">
+            <span class="material-icons">close</span>
+        </button>
+
+        <!-- Imagen del producto -->
+        <div class="payment-product-img" id="modalProductImg"></div>
+
+        <!-- Info del producto -->
+        <div class="payment-product-info">
+            <span class="payment-badge">Compra segura</span>
+            <h2 class="payment-product-name" id="modalProductName"></h2>
+            <div class="payment-price-row">
+                <span class="payment-price">$<span id="modalProductPrice"></span></span>
+                <span class="payment-currency"></span>
+            </div>
+            <div class="payment-seller-row" id="modalSellerRow"></div>
+        </div>
+
+        <div class="payment-divider"></div>
+
+        <!-- Métodos de pago -->
+        <div class="payment-methods-label">Elige cómo pagar</div>
+        <div class="payment-methods">
+            <button class="payment-method-btn active" id="btnStripe" onclick="selectPayMethod('stripe')">
+                <span class="material-icons">credit_card</span>
+                <span>Tarjeta / Stripe</span>
+            </button>
+        </div>
+
+        <!-- Botón principal -->
+        <button onclick="processPayment('Stripe')" class="payment-main-btn">
+            <span class="material-icons">lock</span>
+            Pagar de forma segura
+        </button>
+
+        <p class="payment-footer">
+            <span class="material-icons" style="font-size:14px;vertical-align:middle">shield</span>
+            Pago protegido con cifrado SSL · Powered by Stripe
+        </p>
+    </div>
+</div>
+
+    <!-- Modal de Publicación -->
+    <div id="publishModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <span class="close" onclick="closePublishModal()">&times;</span>
+            <h3>📦 Publicar producto</h3>
+            <input type="text" id="productTitle" placeholder="Título del producto" class="modal-input">
+            <textarea id="productDesc" placeholder="Descripción" class="modal-input"></textarea>
+            <input type="number" id="productPriceInput" placeholder="Precio en " class="modal-input">
+            <select id="productCategory" class="modal-input">
+                <option value="Electrónica">Electrónica</option>
+                <option value="Ropa">Ropa</option>
+                <option value="Hogar">Hogar</option>
+                <option value="Autos">Autos</option>
+                <option value="Deportes">Deportes</option>
+            </select>
+            <label class="modal-input file-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                <span class="material-icons" style="font-size:18px">add_photo_alternate</span>
+                Agregar imagen del producto
+                <input type="file" id="productImageInput" accept="image/*" style="display:none">
+            </label>
+            <div id="imagePreview"></div>
+            <button onclick="publishProduct()" class="publish-btn">Publicar producto</button>
+        </div>
+    </div>
+
+    <!-- Modal Editar Producto -->
+    <div id="editProductModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <span class="close" onclick="closeEditModal()">&times;</span>
+            <h3>✏️ Editar producto</h3>
+            <input type="hidden" id="editProductId">
+            <input type="text" id="editProductTitle" placeholder="Título" class="modal-input">
+            <textarea id="editProductDesc" placeholder="Descripción" class="modal-input"></textarea>
+            <input type="number" id="editProductPrice" placeholder="Precio en USD" class="modal-input">
+            <select id="editProductCategory" class="modal-input">
+                <option value="Electrónica">Electrónica</option>
+                <option value="Ropa">Ropa</option>
+                <option value="Hogar">Hogar</option>
+                <option value="Autos">Autos</option>
+                <option value="Deportes">Deportes</option>
+            </select>
+            <button onclick="saveEditProduct()" class="publish-btn">Guardar cambios</button>
+        </div>
+    </div>
+
+    <!-- Modal de Login -->
+    <div id="loginModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <span class="close" onclick="closeLoginModal()">&times;</span>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('login')">Iniciar Sesión</button>
+                <button class="tab-btn" onclick="switchTab('register')">Registrarse</button>
+            </div>
+            <div id="loginTab">
+                <input type="email" id="loginEmail" placeholder="Correo electrónico" class="modal-input">
+                <input type="password" id="loginPassword" placeholder="Contraseña" class="modal-input">
+                <button onclick="login()" class="login-btn">Ingresar</button>
+            </div>
+            <div id="registerTab" style="display:none">
+                <input type="text" id="regName" placeholder="Nombre completo" class="modal-input">
+                <input type="email" id="regEmail" placeholder="Correo electrónico" class="modal-input">
+                <input type="password" id="regPassword" placeholder="Contraseña" class="modal-input">
+                <label class="modal-input file-label" style="cursor:pointer;display:flex;align-items:center;gap:8px;">
+                    <span class="material-icons" style="font-size:18px">photo_camera</span>
+                    Foto de perfil (opcional)
+                    <input type="file" id="regAvatar" accept="image/*" style="display:none">
+                </label>
+                <button onclick="register()" class="register-btn">Crear cuenta</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Conectar Stripe -->
+<div id="stripeConnectModal" class="modal" style="display:none">
+    <div class="modal-content" style="text-align:center;max-width:400px;">
+        <span class="close" onclick="document.getElementById('stripeConnectModal').style.display='none'">&times;</span>
+        <div style="font-size:48px;margin-bottom:16px;">💳</div>
+        <h3>Conecta tu cuenta de pagos</h3>
+        <p style="color:#6b7280;margin:12px 0 24px;line-height:1.6;">
+            Para publicar productos y recibir el <strong>95%</strong> de cada venta automáticamente, necesitas conectar tu cuenta Stripe.<br><br>
+            Solo toma <strong>5 minutos</strong> y es completamente gratis.
+        </p>
+        <button onclick="connectSellerStripeAccount()" class="publish-btn" style="width:100%">
+            🔗 Conectar mi cuenta Stripe
+        </button>
+        <p style="font-size:12px;color:#9ca3af;margin-top:12px;">
+            🔒 Seguro · Powered by Stripe
+        </p>
+    </div>
+</div>
+
+   <script src="stripe-config.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
