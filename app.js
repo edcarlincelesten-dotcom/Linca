@@ -1,33 +1,35 @@
-// ============ BASE DE DATOS ============
-let users     = JSON.parse(localStorage.getItem('linca_users'))       || [];
-let products  = JSON.parse(localStorage.getItem('linca_products'))    || [];
-let currentUser = JSON.parse(localStorage.getItem('linca_currentUser')) || null;
-let favorites = JSON.parse(localStorage.getItem('linca_favorites'))   || [];
-let purchases = JSON.parse(localStorage.getItem('linca_purchases'))   || [];
-let cart      = JSON.parse(localStorage.getItem('linca_cart'))        || [];
-// conversations: { id, productId, productName, productImage, buyerId, sellerId, messages:[] }
-let conversations = JSON.parse(localStorage.getItem('linca_conversations')) || [];
-let currentTheme  = localStorage.getItem('linca_theme') || 'light';
-let activeConvId  = null;
+// ============================================
+// Linca — app.js con Supabase
+// ============================================
 
+// ── Estado global ─────────────────────────────
+let currentUser  = JSON.parse(localStorage.getItem('linca_currentUser')) || null;
+let products     = [];
+let favorites    = [];
+let cart         = JSON.parse(localStorage.getItem('linca_cart')) || [];
+let purchases    = [];
+let conversations = [];
+let activeConvId = null;
+let currentTheme = localStorage.getItem('linca_theme') || 'light';
 
-// ============ GUARDADO ============
-function saveUsers()         { localStorage.setItem('linca_users',         JSON.stringify(users)); }
-function saveProducts()      { localStorage.setItem('linca_products',      JSON.stringify(products)); }
-function saveCurrentUser()   { localStorage.setItem('linca_currentUser',   JSON.stringify(currentUser)); }
-function saveFavorites()     { localStorage.setItem('linca_favorites',     JSON.stringify(favorites)); }
-function savePurchases()     { localStorage.setItem('linca_purchases',     JSON.stringify(purchases)); }
-function saveCart()          { localStorage.setItem('linca_cart',          JSON.stringify(cart)); }
-function saveConversations() { localStorage.setItem('linca_conversations', JSON.stringify(conversations)); }
-
-// ============ UTILIDADES ============
+// ── Utilidades ────────────────────────────────
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = String(text);
     return div.innerHTML;
 }
 
-// ============ TEMA ============
+function formatTime(dateStr) {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diff = now - d;
+    if (diff < 60000) return 'Ahora';
+    if (diff < 3600000) return `${Math.floor(diff/60000)}m`;
+    if (diff < 86400000) return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return d.toLocaleDateString([], {day:'2-digit',month:'2-digit'});
+}
+
+// ── Tema ──────────────────────────────────────
 function applyTheme(theme) {
     currentTheme = theme;
     document.body.classList.toggle('dark-mode', theme === 'dark');
@@ -42,7 +44,29 @@ function setTheme(theme) {
     showNotification(theme === 'dark' ? '🌙 Tema oscuro activado' : '☀️ Tema claro activado', 'success');
 }
 
-// ============ TARJETA DE PRODUCTO ============
+// ── Carrito (sigue en localStorage) ──────────
+function saveCart() { localStorage.setItem('linca_cart', JSON.stringify(cart)); }
+
+function updateCartCount() {
+    const count = document.getElementById("cartCount");
+    if (count) count.innerText = cart.length;
+}
+
+// ── Notificaciones ────────────────────────────
+function showNotification(message, type) {
+    const n = document.createElement("div");
+    n.textContent = message;
+    n.style.cssText = `position:fixed;bottom:20px;right:20px;padding:12px 20px;
+        background:${type==='success'?'#2ecc71':type==='error'?'#e74c3c':'#3498db'};
+        color:white;border-radius:8px;z-index:9999;font-size:14px;
+        box-shadow:0 4px 12px rgba(0,0,0,0.2);`;
+    document.body.appendChild(n);
+    setTimeout(() => n.remove(), 3000);
+}
+
+// ============================================
+// TARJETA DE PRODUCTO
+// ============================================
 function renderProductCard(prod) {
     const inCart = cart.some(i => i.id === prod.id);
     return `
@@ -54,7 +78,7 @@ function renderProductCard(prod) {
                 <div class="product-title">${escapeHtml(prod.name)}</div>
                 <div class="product-price">RD$${prod.price}</div>
                 <div class="product-seller">
-                    <img src="${prod.sellerAvatar}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">
+                    <img src="${prod.seller_avatar || prod.sellerAvatar}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">
                     ${escapeHtml(prod.seller)}
                 </div>
                 <div style="display:flex;gap:8px;margin-top:8px;">
@@ -68,12 +92,53 @@ function renderProductCard(prod) {
     `;
 }
 
-// ============ DETALLE DEL PRODUCTO (con chat) ============
+// ============================================
+// RENDERIZAR PRODUCTOS (desde Supabase)
+// ============================================
+async function renderProducts(filter = "") {
+    const grid = document.getElementById("productsGrid");
+    if (!grid) return;
+
+    grid.innerHTML = '<div style="text-align:center;padding:40px;">Cargando productos...</div>';
+
+    try {
+        products = await dbGetProducts();
+        let filtered = [...products];
+        if (filter) filtered = filtered.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div style="text-align:center;padding:40px;">No hay productos en Linca 😢</div>';
+            return;
+        }
+        grid.innerHTML = filtered.map(prod => renderProductCard(prod)).join('');
+    } catch (e) {
+        grid.innerHTML = '<div style="text-align:center;padding:40px;">Error cargando productos 😢</div>';
+    }
+}
+
+function filterByCategory(category) {
+    ['favoritesSection','purchasesSection','messagesSection','cartSection','settingsSection']
+        .forEach(id => document.getElementById(id).style.display = "none");
+    document.getElementById("homeSection").style.display = "block";
+    const grid = document.getElementById("productsGrid");
+    const filtered = products.filter(p => p.category === category);
+    if (filtered.length === 0) {
+        grid.innerHTML = `<div style="text-align:center;padding:40px;">No hay productos en ${escapeHtml(category)} 😢</div>`;
+        return;
+    }
+    grid.innerHTML = filtered.map(prod => renderProductCard(prod)).join('');
+}
+
+// ============================================
+// DETALLE DEL PRODUCTO
+// ============================================
 function openProductDetail(productId) {
     const prod = products.find(p => p.id === productId);
     if (!prod) return;
-    const isOwn = currentUser && currentUser.id === prod.sellerId;
+    const isOwn  = currentUser && currentUser.id === (prod.seller_id || prod.sellerId);
     const inCart = cart.some(i => i.id === prod.id);
+    const avatar = prod.seller_avatar || prod.sellerAvatar;
+    const sellerId = prod.seller_id || prod.sellerId;
 
     document.getElementById('productDetailBody').innerHTML = `
         <div class="detail-layout">
@@ -86,7 +151,7 @@ function openProductDetail(productId) {
                 <h2 style="margin:0 0 4px">${escapeHtml(prod.name)}</h2>
                 <div style="font-size:1.6rem;font-weight:700;color:#7c3aed;margin-bottom:12px;">RD$${prod.price}</div>
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-                    <img src="${prod.sellerAvatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
+                    <img src="${avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">
                     <div>
                         <div style="font-weight:600;">${escapeHtml(prod.seller)}</div>
                         <div style="font-size:12px;opacity:0.6;">${prod.category}</div>
@@ -113,220 +178,17 @@ function openProductDetail(productId) {
 }
 function closeProductDetail() { document.getElementById('productDetailModal').style.display = 'none'; }
 
-// ============ CHAT PRIVADO POR PRODUCTO ============
-function startChat(productId) {
-    if (!currentUser) { showNotification("Inicia sesión para chatear", "error"); openLoginModal(); return; }
-    const prod = products.find(p => p.id === productId);
-    if (!prod) return;
-    if (currentUser.id === prod.sellerId) { showNotification("No puedes chatear contigo mismo", "info"); return; }
-
-    // Buscar conversación existente para este producto entre estos dos usuarios
-    let conv = conversations.find(c =>
-        c.productId === productId &&
-        c.buyerId === currentUser.id &&
-        c.sellerId === prod.sellerId
-    );
-
-    if (!conv) {
-        conv = {
-            id: Date.now(),
-            productId: prod.id,
-            productName: prod.name,
-            productImage: prod.image,
-            productPrice: prod.price,
-            buyerId: currentUser.id,
-            buyerName: currentUser.name,
-            buyerAvatar: currentUser.avatar,
-            sellerId: prod.sellerId,
-            sellerName: prod.seller,
-            sellerAvatar: prod.sellerAvatar,
-            messages: [],
-            lastDate: new Date().toISOString()
-        };
-        conversations.push(conv);
-        saveConversations();
-    }
-
-    closeProductDetail();
-    showSection('messages');
-    setTimeout(() => openConversation(conv.id), 100);
-}
-
-function renderInbox() {
-    const list = document.getElementById('inboxList');
-    if (!list || !currentUser) return;
-
-    // Mostrar conversaciones donde el usuario es comprador o vendedor
-    const myConvs = conversations.filter(c =>
-        c.buyerId === currentUser.id || c.sellerId === currentUser.id
-    ).sort((a, b) => new Date(b.lastDate) - new Date(a.lastDate));
-
-    if (myConvs.length === 0) {
-        list.innerHTML = '<div style="padding:20px;text-align:center;opacity:0.5;">No tienes conversaciones aún.<br>Haz clic en "Conversar con el vendedor" en cualquier producto.</div>';
-        return;
-    }
-
-    list.innerHTML = myConvs.map(conv => {
-        const isActive = conv.id === activeConvId;
-        const isBuyer  = conv.buyerId === currentUser.id;
-        const otherName   = isBuyer ? conv.sellerName  : conv.buyerName;
-        const otherAvatar = isBuyer ? conv.sellerAvatar : conv.buyerAvatar;
-        const lastMsg = conv.messages.length > 0 ? conv.messages[conv.messages.length - 1] : null;
-
-        return `
-            <div class="inbox-item ${isActive ? 'active' : ''}" onclick="openConversation(${conv.id})">
-                <div style="position:relative;flex-shrink:0;">
-                    <img src="${otherAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
-                         style="width:48px;height:48px;border-radius:50%;object-fit:cover;">
-                    ${conv.productImage
-                        ? `<img src="${conv.productImage}" style="width:20px;height:20px;border-radius:4px;object-fit:cover;position:absolute;bottom:-2px;right:-2px;border:2px solid white;">`
-                        : ''}
-                </div>
-                <div style="flex:1;min-width:0;">
-                    <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(otherName)}</div>
-                    <div style="font-size:12px;opacity:0.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📦 ${escapeHtml(conv.productName)}</div>
-                    ${lastMsg ? `<div style="font-size:12px;opacity:0.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(lastMsg.text)}</div>` : ''}
-                </div>
-                <div style="font-size:11px;opacity:0.4;flex-shrink:0;">${lastMsg ? formatTime(lastMsg.date) : ''}</div>
-            </div>
-        `;
-    }).join('');
-}
-
-function openConversation(convId) {
-    activeConvId = convId;
-    const conv = conversations.find(c => c.id === convId);
-    if (!conv) return;
-
-    renderInbox(); // Remarcar activo
-
-    const isBuyer    = conv.buyerId === currentUser.id;
-    const otherName  = isBuyer ? conv.sellerName  : conv.buyerName;
-    const otherAvatar= isBuyer ? conv.sellerAvatar : conv.buyerAvatar;
-
-    const chat = document.getElementById('inboxChat');
-    chat.innerHTML = `
-        <!-- Header -->
-        <div class="chat-header">
-            <img src="${otherAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
-                 style="width:40px;height:40px;border-radius:50%;object-fit:cover;">
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;">${escapeHtml(otherName)}</div>
-                <div style="font-size:12px;opacity:0.6;">Sobre: ${escapeHtml(conv.productName)}</div>
-            </div>
-            <div class="chat-product-thumb">
-                ${conv.productImage
-                    ? `<img src="${conv.productImage}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">`
-                    : `<div style="width:44px;height:44px;border-radius:8px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;">📦</div>`}
-                <span style="font-size:13px;font-weight:600;color:#7c3aed;">$${conv.productPrice} </span>
-            </div>
-        </div>
-        <!-- Mensajes -->
-        <div class="chat-messages" id="chatMessages"></div>
-        <!-- Input -->
-        <div class="chat-input-row">
-            <input type="text" id="chatInput" class="chat-input" placeholder="Escribe un mensaje..."
-                   onkeydown="if(event.key==='Enter') sendChatMessage()">
-            <button class="chat-send-btn" onclick="sendChatMessage()">
-                <span class="material-icons">send</span>
-            </button>
-        </div>
-    `;
-    renderChatMessages(conv);
-}
-
-function renderChatMessages(conv) {
-    const container = document.getElementById('chatMessages');
-    if (!container) return;
-
-    if (conv.messages.length === 0) {
-        container.innerHTML = `<div style="text-align:center;opacity:0.5;padding:20px;">Saluda al ${conv.buyerId === currentUser.id ? 'vendedor' : 'comprador'} 👋</div>`;
-        return;
-    }
-
-    container.innerHTML = conv.messages.map(msg => {
-        const isMine = msg.senderId === currentUser.id;
-        return `
-            <div class="chat-bubble-row ${isMine ? 'mine' : 'theirs'}">
-                ${!isMine ? `<img src="${msg.senderAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
-                    style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : ''}
-                <div class="chat-bubble ${isMine ? 'bubble-mine' : 'bubble-theirs'}">
-                    <span>${escapeHtml(msg.text)}</span>
-                    <span class="bubble-time">${formatTime(msg.date)}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    container.scrollTop = container.scrollHeight;
-}
-
-function sendChatMessage() {
-    const input = document.getElementById('chatInput');
-    if (!input || !input.value.trim()) return;
-    if (!currentUser) { showNotification("Inicia sesión", "error"); return; }
-
-    const conv = conversations.find(c => c.id === activeConvId);
-    if (!conv) return;
-
-    const msg = {
-        id: Date.now(),
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        senderAvatar: currentUser.avatar,
-        text: input.value.trim(),
-        date: new Date().toISOString()
-    };
-
-    conv.messages.push(msg);
-    conv.lastDate = msg.date;
-    saveConversations();
-    input.value = '';
-    renderChatMessages(conv);
-    renderInbox();
-}
-
-function formatTime(dateStr) {
-    const d = new Date(dateStr);
-    const now = new Date();
-    const diff = now - d;
-    if (diff < 60000) return 'Ahora';
-    if (diff < 3600000) return `${Math.floor(diff/60000)}m`;
-    if (diff < 86400000) return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    return d.toLocaleDateString([], {day:'2-digit',month:'2-digit'});
-}
-
-// ============ RENDER PRODUCTOS ============
-function renderProducts(filter = "") {
-    const grid = document.getElementById("productsGrid");
-    if (!grid) return;
-    let filtered = [...products];
-    if (filter) filtered = filtered.filter(p => p.name.toLowerCase().includes(filter.toLowerCase()));
-    if (filtered.length === 0) {
-        grid.innerHTML = '<div style="text-align:center;padding:40px;">No hay productos en Linca 😢</div>';
-        return;
-    }
-    grid.innerHTML = filtered.map(prod => renderProductCard(prod)).join('');
-}
-
-function filterByCategory(category) {
-    ['favoritesSection','purchasesSection','messagesSection','cartSection','settingsSection']
-        .forEach(id => document.getElementById(id).style.display = "none");
-    document.getElementById("homeSection").style.display = "block";
-    const grid = document.getElementById("productsGrid");
-    const filtered = products.filter(p => p.category === category);
-    if (filtered.length === 0) {
-        grid.innerHTML = `<div style="text-align:center;padding:40px;">No hay productos en ${escapeHtml(category)} 😢</div>`;
-        return;
-    }
-    grid.innerHTML = filtered.map(prod => renderProductCard(prod)).join('');
-}
-
-// ============ FAVORITOS ============
-function renderFavorites() {
+// ============================================
+// FAVORITOS (desde Supabase)
+// ============================================
+async function renderFavorites() {
     const container = document.getElementById("favoritesContainer");
-    if (!container) return;
+    if (!container || !currentUser) return;
+
+    container.innerHTML = '<div style="text-align:center;padding:20px;">Cargando...</div>';
+    favorites = await dbGetFavorites(currentUser.id);
     const favProducts = products.filter(p => favorites.includes(p.id));
+
     if (favProducts.length === 0) {
         container.innerHTML = '<div style="text-align:center;padding:40px;">No tienes favoritos aún 🤍</div>';
         return;
@@ -334,18 +196,31 @@ function renderFavorites() {
     container.innerHTML = favProducts.map(prod => renderProductCard(prod)).join('');
 }
 
-function toggleFavorite(productId) {
+async function toggleFavorite(productId) {
     if (!currentUser) { showNotification("Inicia sesión para guardar favoritos", "error"); openLoginModal(); return; }
     const idx = favorites.indexOf(productId);
-    if (idx === -1) { favorites.push(productId); showNotification("✅ Añadido a favoritos", "success"); }
-    else { favorites.splice(idx, 1); showNotification("❌ Eliminado de favoritos", "info"); }
-    saveFavorites(); renderProducts();
+    if (idx === -1) {
+        await dbAddFavorite(currentUser.id, productId);
+        favorites.push(productId);
+        showNotification("✅ Añadido a favoritos", "success");
+    } else {
+        await dbRemoveFavorite(currentUser.id, productId);
+        favorites.splice(idx, 1);
+        showNotification("❌ Eliminado de favoritos", "info");
+    }
+    renderProducts();
 }
 
-// ============ COMPRAS ============
-function renderPurchases() {
+// ============================================
+// COMPRAS (desde Supabase)
+// ============================================
+async function renderPurchases() {
     const container = document.getElementById("purchasesContainer");
-    if (!container) return;
+    if (!container || !currentUser) return;
+
+    container.innerHTML = '<div style="text-align:center;padding:20px;">Cargando...</div>';
+    purchases = await dbGetPurchases(currentUser.id);
+
     if (purchases.length === 0) {
         container.innerHTML = '<div style="text-align:center;padding:40px;">No has realizado compras aún 📦</div>';
         return;
@@ -354,7 +229,7 @@ function renderPurchases() {
         <div class="purchase-card">
             <div style="flex:1">
                 <h4>${escapeHtml(p.name)}</h4>
-                <p>$${p.price} </p>
+                <p>RD$${p.price}</p>
                 <p style="font-size:12px;opacity:0.6;">Comprado: ${p.date}</p>
             </div>
             <span class="status delivered">✅ Entregado</span>
@@ -362,7 +237,9 @@ function renderPurchases() {
     `).join('');
 }
 
-// ============ CARRITO ============
+// ============================================
+// CARRITO (sigue local, solo datos de sesión)
+// ============================================
 function renderCart() {
     const container = document.getElementById("cartContainer");
     if (!container) return;
@@ -376,20 +253,20 @@ function renderCart() {
             <div class="cart-item">
                 ${item.image ? `<img src="${item.image}" style="width:56px;height:56px;border-radius:8px;object-fit:cover;">` : `<div style="width:56px;height:56px;border-radius:8px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;">📦</div>`}
                 <div style="flex:1;min-width:0;">
-                    <h4 style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(item.name)}</h4>
-                    <p style="margin:2px 0;color:#7c3aed;font-weight:600;"RD$${item.price}</p>
+                    <h4 style="margin:0;">${escapeHtml(item.name)}</h4>
+                    <p style="margin:2px 0;color:#7c3aed;font-weight:600;">RD$${item.price}</p>
                     <p style="margin:0;font-size:12px;opacity:0.6;">${escapeHtml(item.seller)}</p>
                 </div>
                 <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
                     <button onclick="removeFromCart(${item.id})" class="remove-btn">❌ Quitar</button>
-                    <button onclick="closeProductDetail && true; openPaymentModal(${item.id})" class="buy-btn" style="font-size:13px;padding:6px 12px;">💳 Comprar</button>
+                    <button onclick="openPaymentModal(${item.id})" class="buy-btn" style="font-size:13px;padding:6px 12px;">💳 Comprar</button>
                 </div>
             </div>
         `).join('')}
         <div class="cart-total">
             <div>
                 <div style="font-size:13px;opacity:0.6;">${cart.length} producto${cart.length !== 1 ? 's' : ''}</div>
-                <strong style="font-size:1.2rem;">Total: $${total} </strong>
+                <strong style="font-size:1.2rem;">Total: RD$${total}</strong>
             </div>
             <button onclick="checkout()" class="checkout-btn">🎉 Pagar todo</button>
         </div>
@@ -412,17 +289,168 @@ function removeFromCart(productId) {
     saveCart(); updateCartCount(); renderCart(); renderProducts();
 }
 
-function updateCartCount() {
-    const count = document.getElementById("cartCount");
-    if (count) count.innerText = cart.length;
-}
-
-function checkout() {
+async function checkout() {
     if (cart.length === 0) return;
-    redirectToStripeCheckoutCart(cart);
+    if (!currentUser) { showNotification("Inicia sesión para comprar", "error"); openLoginModal(); return; }
+
+    for (const item of cart) {
+        await dbCreatePurchase(currentUser.id, item);
+    }
+
+    cart = []; saveCart(); updateCartCount();
+    showNotification("🎉 ¡Compra realizada con éxito!", "success");
+    renderCart(); renderPurchases();
 }
 
-// ============ PUBLICAR PRODUCTO ============
+// ============================================
+// MENSAJES (desde Supabase)
+// ============================================
+async function startChat(productId) {
+    if (!currentUser) { showNotification("Inicia sesión para chatear", "error"); openLoginModal(); return; }
+    const prod = products.find(p => p.id === productId);
+    if (!prod) return;
+    const sellerId = prod.seller_id || prod.sellerId;
+    if (currentUser.id === sellerId) { showNotification("No puedes chatear contigo mismo", "info"); return; }
+
+    try {
+        const conv = await dbGetOrCreateConversation(prod.id, currentUser.id, sellerId, {
+            productName:   prod.name,
+            productImage:  prod.image,
+            productPrice:  prod.price,
+            buyerName:     currentUser.name,
+            buyerAvatar:   currentUser.avatar,
+            sellerName:    prod.seller,
+            sellerAvatar:  prod.seller_avatar || prod.sellerAvatar,
+        });
+
+        closeProductDetail();
+        showSection('messages');
+        setTimeout(() => openConversation(conv.id), 300);
+    } catch (e) {
+        showNotification("Error al iniciar chat", "error");
+    }
+}
+
+async function renderInbox() {
+    const list = document.getElementById('inboxList');
+    if (!list || !currentUser) return;
+
+    list.innerHTML = '<div style="padding:20px;text-align:center;opacity:0.5;">Cargando...</div>';
+    conversations = await dbGetConversations(currentUser.id);
+
+    if (conversations.length === 0) {
+        list.innerHTML = '<div style="padding:20px;text-align:center;opacity:0.5;">No tienes conversaciones aún.</div>';
+        return;
+    }
+
+    list.innerHTML = conversations.map(conv => {
+        const isActive   = conv.id === activeConvId;
+        const isBuyer    = conv.buyer_id === currentUser.id;
+        const otherName  = isBuyer ? conv.seller_name  : conv.buyer_name;
+        const otherAvatar= isBuyer ? conv.seller_avatar : conv.buyer_avatar;
+
+        return `
+            <div class="inbox-item ${isActive ? 'active' : ''}" onclick="openConversation(${conv.id})">
+                <img src="${otherAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
+                     style="width:48px;height:48px;border-radius:50%;object-fit:cover;flex-shrink:0;">
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(otherName)}</div>
+                    <div style="font-size:12px;opacity:0.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📦 ${escapeHtml(conv.product_name)}</div>
+                </div>
+                <div style="font-size:11px;opacity:0.4;">${formatTime(conv.last_date)}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function openConversation(convId) {
+    activeConvId = convId;
+    const conv = conversations.find(c => c.id === convId);
+    if (!conv) return;
+    renderInbox();
+
+    const isBuyer    = conv.buyer_id === currentUser.id;
+    const otherName  = isBuyer ? conv.seller_name  : conv.buyer_name;
+    const otherAvatar= isBuyer ? conv.seller_avatar : conv.buyer_avatar;
+
+    const chat = document.getElementById('inboxChat');
+    chat.innerHTML = `
+        <div class="chat-header">
+            <img src="${otherAvatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
+                 style="width:40px;height:40px;border-radius:50%;object-fit:cover;">
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;">${escapeHtml(otherName)}</div>
+                <div style="font-size:12px;opacity:0.6;">Sobre: ${escapeHtml(conv.product_name)}</div>
+            </div>
+            <div class="chat-product-thumb">
+                ${conv.product_image
+                    ? `<img src="${conv.product_image}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">`
+                    : `<div style="width:44px;height:44px;border-radius:8px;background:#e5e7eb;display:flex;align-items:center;justify-content:center;">📦</div>`}
+                <span style="font-size:13px;font-weight:600;color:#7c3aed;">RD$${conv.product_price}</span>
+            </div>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-row">
+            <input type="text" id="chatInput" class="chat-input" placeholder="Escribe un mensaje..."
+                   onkeydown="if(event.key==='Enter') sendChatMessage()">
+            <button class="chat-send-btn" onclick="sendChatMessage()">
+                <span class="material-icons">send</span>
+            </button>
+        </div>
+    `;
+
+    // Cargar mensajes
+    const messages = await dbGetMessages(convId);
+    renderChatMessages(messages);
+}
+
+function renderChatMessages(messages) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    if (messages.length === 0) {
+        container.innerHTML = `<div style="text-align:center;opacity:0.5;padding:20px;">Saluda 👋</div>`;
+        return;
+    }
+    container.innerHTML = messages.map(msg => {
+        const isMine = msg.sender_id === currentUser.id;
+        return `
+            <div class="chat-bubble-row ${isMine ? 'mine' : 'theirs'}">
+                ${!isMine ? `<img src="${msg.sender_avatar || 'https://randomuser.me/api/portraits/lego/1.jpg'}"
+                    style="width:28px;height:28px;border-radius:50%;object-fit:cover;flex-shrink:0;">` : ''}
+                <div class="chat-bubble ${isMine ? 'bubble-mine' : 'bubble-theirs'}">
+                    <span>${escapeHtml(msg.text)}</span>
+                    <span class="bubble-time">${formatTime(msg.date)}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatInput');
+    if (!input || !input.value.trim()) return;
+    if (!currentUser) return;
+
+    const conv = conversations.find(c => c.id === activeConvId);
+    if (!conv) return;
+
+    await dbSendMessage(activeConvId, {
+        id:     currentUser.id,
+        name:   currentUser.name,
+        avatar: currentUser.avatar,
+        text:   input.value.trim(),
+    });
+
+    input.value = '';
+    const messages = await dbGetMessages(activeConvId);
+    renderChatMessages(messages);
+    renderInbox();
+}
+
+// ============================================
+// PUBLICAR PRODUCTO (a Supabase)
+// ============================================
 function publishProduct() {
     const title    = document.getElementById("productTitle").value.trim();
     const price    = document.getElementById("productPriceInput").value;
@@ -447,17 +475,28 @@ function publishProduct() {
     }
 }
 
-function crearYGuardarProducto(title, desc, price, category, imageBase64) {
-    products.unshift({
-        id: Date.now(), name: title,
-        description: desc || "Sin descripción",
-        price, category, image: imageBase64,
-        seller: currentUser.name, sellerId: currentUser.id,
-        sellerAvatar: currentUser.avatar || "https://randomuser.me/api/portraits/lego/1.jpg",
-        date: new Date().toISOString()
-    });
-    saveProducts(); clearPublishForm(); closePublishModal(); renderProducts();
-    showNotification(`✅ ¡${title} publicado en Linca!`, "success");
+async function crearYGuardarProducto(title, desc, price, category, imageBase64) {
+    try {
+        const nuevoProducto = {
+            id:           Date.now(),
+            name:         title,
+            description:  desc || "Sin descripción",
+            price:        price,
+            category:     category,
+            image:        imageBase64,
+            seller:       currentUser.name,
+            sellerId:     currentUser.id,
+            sellerAvatar: currentUser.avatar || "https://randomuser.me/api/portraits/lego/1.jpg",
+        };
+
+        await dbCreateProduct(nuevoProducto);
+        clearPublishForm();
+        closePublishModal();
+        await renderProducts();
+        showNotification(`✅ ¡${title} publicado en Linca!`, "success");
+    } catch (e) {
+        showNotification("❌ Error al publicar: " + e.message, "error");
+    }
 }
 
 function clearPublishForm() {
@@ -467,7 +506,9 @@ function clearPublishForm() {
     const ip = document.getElementById("imagePreview"); if (ip) ip.innerHTML = "";
 }
 
-// ============ LOGIN / REGISTRO ============
+// ============================================
+// LOGIN / REGISTRO (con Supabase)
+// ============================================
 function switchTab(tab) {
     const lt = document.getElementById("loginTab");
     const rt = document.getElementById("registerTab");
@@ -481,15 +522,18 @@ function switchTab(tab) {
     }
 }
 
-function register() {
-    const name     = document.getElementById("regName").value;
-    const email    = document.getElementById("regEmail").value;
+async function register() {
+    const name     = document.getElementById("regName").value.trim();
+    const email    = document.getElementById("regEmail").value.trim();
     const password = document.getElementById("regPassword").value;
     const avatarEl = document.getElementById("regAvatar");
     const file     = avatarEl ? avatarEl.files[0] : null;
 
     if (!name || !email || !password) { showNotification("Completa todos los campos", "error"); return; }
-    if (users.find(u => u.email === email)) { showNotification("El email ya está registrado", "error"); return; }
+
+    // Verificar si el email ya existe
+    const existing = await dbGetUser(email);
+    if (existing) { showNotification("El email ya está registrado", "error"); return; }
 
     if (file) {
         const r = new FileReader();
@@ -500,37 +544,67 @@ function register() {
     }
 }
 
-function createUser(name, email, password, avatarUrl) {
-    const newUser = { id: Date.now(), name, email, password, avatar: avatarUrl, joinDate: new Date().toLocaleDateString() };
-    users.push(newUser); saveUsers();
-    currentUser = newUser; saveCurrentUser();
-    closeLoginModal(); updateUIForUser();
-    showNotification(`🎉 ¡Bienvenido ${name} a Linca!`, "success");
-    renderProducts();
-    ["regName","regEmail","regPassword"].forEach(id => document.getElementById(id).value = "");
-    const ra = document.getElementById("regAvatar"); if (ra) ra.value = "";
+async function createUser(name, email, password, avatarUrl) {
+    try {
+        const newUser = {
+            id:       Date.now(),
+            name,
+            email,
+            password,
+            avatar:   avatarUrl,
+            joinDate: new Date().toLocaleDateString()
+        };
+
+        await dbCreateUser(newUser);
+        currentUser = newUser;
+        localStorage.setItem('linca_currentUser', JSON.stringify(currentUser));
+        closeLoginModal(); updateUIForUser();
+        showNotification(`🎉 ¡Bienvenido ${name} a Linca!`, "success");
+        renderProducts();
+        ["regName","regEmail","regPassword"].forEach(id => document.getElementById(id).value = "");
+        const ra = document.getElementById("regAvatar"); if (ra) ra.value = "";
+    } catch (e) {
+        showNotification("❌ Error al registrar: " + e.message, "error");
+    }
 }
 
-function login() {
-    const email    = document.getElementById("loginEmail").value;
+async function login() {
+    const email    = document.getElementById("loginEmail").value.trim();
     const password = document.getElementById("loginPassword").value;
-    const user = users.find(u => u.email === email && u.password === password);
-    if (user) {
-        currentUser = user; saveCurrentUser();
-        closeLoginModal(); updateUIForUser();
-        showNotification(`👋 ¡Bienvenido de vuelta ${user.name}!`, "success");
-        renderProducts();
-        document.getElementById("loginEmail").value = "";
-        document.getElementById("loginPassword").value = "";
-    } else {
-        showNotification("Email o contraseña incorrectos", "error");
+
+    try {
+        const user = await dbGetUser(email);
+        if (user && user.password === password) {
+            currentUser = {
+                id:              user.id,
+                name:            user.name,
+                email:           user.email,
+                password:        user.password,
+                avatar:          user.avatar,
+                stripeAccountId: user.stripe_account_id,
+                joinDate:        user.join_date,
+            };
+            localStorage.setItem('linca_currentUser', JSON.stringify(currentUser));
+            closeLoginModal(); updateUIForUser();
+            showNotification(`👋 ¡Bienvenido de vuelta ${user.name}!`, "success");
+            renderProducts();
+            document.getElementById("loginEmail").value = "";
+            document.getElementById("loginPassword").value = "";
+        } else {
+            showNotification("Email o contraseña incorrectos", "error");
+        }
+    } catch (e) {
+        showNotification("❌ Error al iniciar sesión", "error");
     }
 }
 
 function logout() {
-    currentUser = null; saveCurrentUser();
+    currentUser = null;
+    localStorage.removeItem('linca_currentUser');
     activeConvId = null;
-    updateUIForUser(); showNotification("Sesión cerrada", "info"); renderProducts();
+    updateUIForUser();
+    showNotification("Sesión cerrada", "info");
+    renderProducts();
 }
 
 function updateUIForUser() {
@@ -551,7 +625,9 @@ function updateUIForUser() {
     }
 }
 
-// ============ NAVEGACIÓN ============
+// ============================================
+// NAVEGACIÓN
+// ============================================
 const ALL_SECTIONS = ['homeSection','favoritesSection','purchasesSection','messagesSection','cartSection','settingsSection'];
 
 function showSection(section) {
@@ -564,9 +640,7 @@ function showSection(section) {
         case 'purchases': document.getElementById("purchasesSection").style.display = "block"; renderPurchases(); break;
         case 'messages':
             if (!currentUser) { showNotification("Inicia sesión para ver mensajes", "error"); openLoginModal(); return; }
-            document.getElementById("messagesSection").style.display = "block";
-            renderInbox();
-            break;
+            document.getElementById("messagesSection").style.display = "block"; renderInbox(); break;
         case 'cart':     document.getElementById("cartSection").style.display = "block"; renderCart(); break;
         case 'settings':
             if (!currentUser) { showNotification("Inicia sesión para la configuración", "error"); openLoginModal(); return; }
@@ -574,7 +648,9 @@ function showSection(section) {
     }
 }
 
-// ============ CONFIGURACIÓN ============
+// ============================================
+// CONFIGURACIÓN
+// ============================================
 function switchSettingsTab(tab) {
     const panels = { profile:'settingsProfile', password:'settingsPassword', theme:'settingsTheme', myproducts:'settingsMyProducts' };
     Object.values(panels).forEach(id => document.getElementById(id).style.display = "none");
@@ -600,18 +676,18 @@ function previewSettingsAvatar(input) {
     }
 }
 
-function saveProfile() {
+async function saveProfile() {
     if (!currentUser) return;
     const newName = document.getElementById("settingsName").value.trim();
     const file    = document.getElementById("settingsAvatar").files[0];
     if (!newName) { showNotification("❌ El nombre no puede estar vacío", "error"); return; }
 
-    const doSave = (avatarUrl) => {
+    const doSave = async (avatarUrl) => {
         currentUser.name = newName;
         if (avatarUrl) currentUser.avatar = avatarUrl;
-        const idx = users.findIndex(u => u.id === currentUser.id);
-        if (idx !== -1) users[idx] = currentUser;
-        saveUsers(); saveCurrentUser(); updateUIForUser();
+        await dbUpdateUser(currentUser);
+        localStorage.setItem('linca_currentUser', JSON.stringify(currentUser));
+        updateUIForUser();
         showNotification("✅ Perfil actualizado", "success");
     };
 
@@ -619,7 +695,7 @@ function saveProfile() {
     else doSave(null);
 }
 
-function changePassword() {
+async function changePassword() {
     if (!currentUser) return;
     const cur  = document.getElementById("currentPassword").value;
     const nw   = document.getElementById("newPassword").value;
@@ -628,18 +704,20 @@ function changePassword() {
     if (!nw || nw.length < 4) { showNotification("❌ Mínimo 4 caracteres", "error"); return; }
     if (nw !== conf) { showNotification("❌ Las contraseñas no coinciden", "error"); return; }
     currentUser.password = nw;
-    const idx = users.findIndex(u => u.id === currentUser.id);
-    if (idx !== -1) users[idx] = currentUser;
-    saveUsers(); saveCurrentUser();
+    await dbUpdateUser(currentUser);
+    localStorage.setItem('linca_currentUser', JSON.stringify(currentUser));
     ["currentPassword","newPassword","confirmPassword"].forEach(id => document.getElementById(id).value = "");
     showNotification("✅ Contraseña actualizada", "success");
 }
 
-function renderMyProducts() {
+async function renderMyProducts() {
     const container = document.getElementById("myProductsContainer");
     if (!container || !currentUser) return;
-    const myProds = products.filter(p => p.sellerId === currentUser.id);
+    container.innerHTML = '<div style="text-align:center;padding:20px;">Cargando...</div>';
+
+    const myProds = products.filter(p => (p.seller_id || p.sellerId) === currentUser.id);
     if (myProds.length === 0) { container.innerHTML = '<div style="text-align:center;padding:40px;">No has publicado productos aún 📦</div>'; return; }
+
     container.innerHTML = myProds.map(prod => `
         <div class="my-product-card">
             ${prod.image ? `<img src="${prod.image}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;flex-shrink:0;">` : `<div style="width:64px;height:64px;background:#e5e7eb;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📦</div>`}
@@ -668,7 +746,7 @@ function openEditModal(productId) {
 }
 function closeEditModal() { document.getElementById("editProductModal").style.display = "none"; }
 
-function saveEditProduct() {
+async function saveEditProduct() {
     const id       = parseInt(document.getElementById("editProductId").value);
     const title    = document.getElementById("editProductTitle").value.trim();
     const desc     = document.getElementById("editProductDesc").value;
@@ -676,95 +754,85 @@ function saveEditProduct() {
     const category = document.getElementById("editProductCategory").value;
     if (!title) { showNotification("❌ El título no puede estar vacío", "error"); return; }
     if (isNaN(price) || price <= 0) { showNotification("❌ Precio inválido", "error"); return; }
+
     const idx = products.findIndex(p => p.id === id);
-    if (idx !== -1) { products[idx] = { ...products[idx], name: title, description: desc, price, category }; saveProducts(); renderMyProducts(); renderProducts(); closeEditModal(); showNotification("✅ Producto actualizado", "success"); }
+    if (idx !== -1) {
+        products[idx] = { ...products[idx], name: title, description: desc, price, category };
+        await dbUpdateProduct(products[idx]);
+        renderMyProducts(); renderProducts(); closeEditModal();
+        showNotification("✅ Producto actualizado", "success");
+    }
 }
 
-function deleteProduct(productId) {
+async function deleteProduct(productId) {
     if (!confirm("¿Seguro que quieres eliminar este producto?")) return;
+    await dbDeleteProduct(productId);
     products = products.filter(p => p.id !== productId);
-    saveProducts(); renderMyProducts(); renderProducts();
+    renderMyProducts(); renderProducts();
     showNotification("🗑️ Producto eliminado", "info");
 }
 
-// ============ MODALES ============
+// ============================================
+// MODALES
+// ============================================
 function openLoginModal()    { document.getElementById("loginModal").style.display = "flex"; }
 function closeLoginModal()   { document.getElementById("loginModal").style.display = "none"; }
-function openPublishModal() {
-    if (!currentUser) {
-        showNotification("Inicia sesión para publicar", "error");
-        openLoginModal();
-        return;
-    }
 
-    // ¿Tiene cuenta Stripe conectada?
+function openPublishModal() {
+    if (!currentUser) { showNotification("Inicia sesión para publicar", "error"); openLoginModal(); return; }
     if (!currentUser.stripeAccountId) {
-        // Mostrar modal de conexión Stripe
         document.getElementById("stripeConnectModal").style.display = "flex";
         return;
     }
-
     document.getElementById("publishModal").style.display = "flex";
 }
 function closePublishModal() { document.getElementById("publishModal").style.display = "none"; }
+
 function openPaymentModal(productId) {
     if (!currentUser) { showNotification("Inicia sesión para comprar", "error"); openLoginModal(); return; }
     const product = products.find(p => p.id === productId);
     if (!product) return;
-
     document.getElementById("modalProductName").innerText  = product.name;
     document.getElementById("modalProductPrice").innerText = product.price;
-
-    // Imagen del producto
     const imgDiv = document.getElementById("modalProductImg");
     if (product.image) {
         imgDiv.style.cssText = `background-image:url('${product.image}');background-size:cover;background-position:center;`;
+        imgDiv.innerHTML = '';
     } else {
-        imgDiv.style.cssText = "background:#f5f0ff;";
+        imgDiv.style.cssText = "background:#f5f0ff;display:flex;align-items:center;justify-content:center;";
         imgDiv.innerHTML = `<span style="font-size:48px;">📦</span>`;
     }
-
-    // Vendedor
+    const avatar = product.seller_avatar || product.sellerAvatar;
     document.getElementById("modalSellerRow").innerHTML = `
-        <img src="${product.sellerAvatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">
+        <img src="${avatar}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">
         <span>Vendido por <strong>${escapeHtml(product.seller)}</strong></span>
     `;
-
     document.getElementById("paymentModal").style.display = "flex";
 }
-function closePaymentModal() { 
-    document.getElementById("paymentModal").style.display = "none"; 
-}
+function closePaymentModal() { document.getElementById("paymentModal").style.display = "none"; }
+
 function processPayment(method) {
     const name  = document.getElementById("modalProductName").innerText;
     const price = parseFloat(document.getElementById("modalProductPrice").innerText);
     const prod  = products.find(p => p.name === name);
+    const sellerId = prod?.seller_id || prod?.sellerId;
     closePaymentModal();
-    redirectToStripeCheckout(name, price, prod?.id, prod?.sellerId);
+    redirectToStripeCheckout(name, price, prod?.id, sellerId);
 }
 
 function selectPayMethod(method) {
     document.querySelectorAll('.payment-method-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('btn' + method.charAt(0).toUpperCase() + method.slice(1)).classList.add('active');
 }
-// ============ NOTIFICACIONES ============
-function showNotification(message, type) {
-    const n = document.createElement("div");
-    n.textContent = message;
-    n.style.cssText = `position:fixed;bottom:20px;right:20px;padding:12px 20px;
-        background:${type==='success'?'#2ecc71':type==='error'?'#e74c3c':'#3498db'};
-        color:white;border-radius:8px;z-index:9999;font-size:14px;
-        box-shadow:0 4px 12px rgba(0,0,0,0.2);`;
-    document.body.appendChild(n);
-    setTimeout(() => n.remove(), 3000);
-}
 
-// ============ INIT ============
-document.addEventListener("DOMContentLoaded", () => {
+// ============================================
+// INIT
+// ============================================
+document.addEventListener("DOMContentLoaded", async () => {
     applyTheme(currentTheme);
-    renderProducts();
     updateUIForUser();
     updateCartCount();
+    await renderProducts();
 
     const imageInput = document.getElementById("productImageInput");
     if (imageInput) {
@@ -792,7 +860,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-// ============ GLOBALES ============
+// ============================================
+// GLOBALES
+// ============================================
 window.switchTab=switchTab; window.login=login; window.register=register; window.logout=logout;
 window.showSection=showSection; window.openLoginModal=openLoginModal; window.closeLoginModal=closeLoginModal;
 window.openPublishModal=openPublishModal; window.closePublishModal=closePublishModal;
@@ -807,7 +877,5 @@ window.openEditModal=openEditModal; window.closeEditModal=closeEditModal;
 window.saveEditProduct=saveEditProduct; window.deleteProduct=deleteProduct;
 window.openProductDetail=openProductDetail; window.closeProductDetail=closeProductDetail;
 window.startChat=startChat; window.openConversation=openConversation;
-window.sendChatMessage=sendChatMessage;
-window.selectPayMethod = selectPayMethod;
-window.connectSellerStripeAccount = connectSellerStripeAccount;
-window.processPayment = processPayment;
+window.sendChatMessage=sendChatMessage; window.selectPayMethod=selectPayMethod;
+window.connectSellerStripeAccount=connectSellerStripeAccount;
