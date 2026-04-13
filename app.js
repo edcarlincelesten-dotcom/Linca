@@ -10,15 +10,6 @@ let conversations = JSON.parse(localStorage.getItem('linca_conversations')) || [
 let currentTheme  = localStorage.getItem('linca_theme') || 'light';
 let activeConvId  = null;
 
-// ============ PRODUCTOS DE EJEMPLO ============
-if (products.length === 0) {
-    products = [
-        { id: 1, name: "iPhone 12 Pro", price: 699, category: "Electrónica", image: "", description: "Excelente estado, 128GB.", seller: "Carlos Méndez", sellerId: 1, sellerAvatar: "https://randomuser.me/api/portraits/men/32.jpg", date: new Date().toISOString() },
-        { id: 2, name: "Zapatos Nike Air Max", price: 129, category: "Ropa", image: "", description: "Talla 42, poco uso.", seller: "Ana Rodríguez", sellerId: 2, sellerAvatar: "https://randomuser.me/api/portraits/women/44.jpg", date: new Date().toISOString() },
-        { id: 3, name: "Sofá Seccional", price: 899, category: "Hogar", image: "", description: "Color gris, 3 módulos.", seller: "Miguel Torres", sellerId: 3, sellerAvatar: "https://randomuser.me/api/portraits/men/45.jpg", date: new Date().toISOString() }
-    ];
-    localStorage.setItem('linca_products', JSON.stringify(products));
-}
 
 // ============ GUARDADO ============
 function saveUsers()         { localStorage.setItem('linca_users',         JSON.stringify(users)); }
