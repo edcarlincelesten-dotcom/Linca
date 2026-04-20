@@ -81,12 +81,15 @@ function renderProductCard(prod) {
                     <img src="${prod.seller_avatar || prod.sellerAvatar}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;">
                     ${escapeHtml(prod.seller)}
                 </div>
-                <div style="display:flex;gap:8px;margin-top:8px;">
-                    <button class="buy-btn" style="flex:1" onclick="event.stopPropagation();openPaymentModal(${prod.id})">Comprar</button>
+             <div style="display:flex;gap:8px;margin-top:8px;">
+                <button class="buy-btn" style="flex:1" onclick="event.stopPropagation();openPaymentModal(${prod.id})">Comprar</button>
+                <button class="${favorites.includes(prod.id) ? 'cart-btn-added' : 'cart-btn'}" onclick="event.stopPropagation();toggleFavorite(${prod.id})" title="Favorito">
+                 <span class="material-icons" style="font-size:18px">${favorites.includes(prod.id) ? 'favorite' : 'favorite_border'}</span>
+                 </button>
                     <button class="${inCart ? 'cart-btn-added' : 'cart-btn'}" onclick="event.stopPropagation();addToCart(${prod.id})" title="${inCart ? 'En carrito' : 'Añadir al carrito'}">
-                        <span class="material-icons" style="font-size:18px">${inCart ? 'shopping_cart' : 'add_shopping_cart'}</span>
-                    </button>
-                </div>
+                    <span class="material-icons" style="font-size:18px">${inCart ? 'shopping_cart' : 'add_shopping_cart'}</span>
+                </button>
+</div>
             </div>
         </div>
     `;
