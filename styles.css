@@ -1304,3 +1304,15 @@ body.dark-mode .payment-method-btn { background: #2a2a3e; border-color: #3a3a5e;
 body.dark-mode .payment-method-btn.active { background: #3a2a5e; border-color: #7c3aed; color: #a78bfa; }
 body.dark-mode .payment-divider { background: #2a2a3e; }
 body.dark-mode .payment-methods-label { color: #ccc; }
+body.dark-mode .product-title {
+    color: #e2e2e2 !important;
+}
+
+body.dark-mode .product-seller {
+    color: #aaaaaa !important;
+}
+
+body.dark-mode .product-info {
+    background: #1e1e30;
+    color: #e2e2e2;
+}
